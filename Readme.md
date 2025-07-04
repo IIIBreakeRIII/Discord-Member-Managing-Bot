@@ -31,7 +31,7 @@
 
 <br>
 
-## Release version 1.1(Bug Fix)
+## Release version 1.1 (`Bug Fix`)
 
 > **Issue** 발생으로 개정 버전으로 수정 배포 진행
 

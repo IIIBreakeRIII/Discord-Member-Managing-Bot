@@ -3,9 +3,10 @@ from db.quit_db import move_user_to_quitlogs, quitlogs
 from db.mongo import format_korean_datetime_string
 import discord
 
-CHANNEL_ID = 1378740342953742417  # 메시지 보낼 채널 ID
-ROLE_MASTER = "<@&1376452625972727808>"
-ROLE_ORGANIZER = "<@&1205565991162089553>"
+CHANNEL_ID = 1111111111111111111  # 알림을 보낼 채널 ID
+
+ROLE_MASTER = "<@&1111111111111111111>"     # 역할 ID
+ROLE_ORGANIZER = "<@&1111111111111111111>"  # 역할 ID
 
 class RejoinTracker(commands.Cog):
     def __init__(self, bot):
