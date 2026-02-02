@@ -1,27 +1,13 @@
-from motor.motor_asyncio import AsyncIOMotorClient
-from dotenv import load_dotenv
 from datetime import datetime, timezone
-from pytz import timezone as pytz_timezone
 
-import os
-
-load_dotenv()
-MONGO_URI = os.getenv("MONGODB_URI")
-
-client = AsyncIOMotorClient(MONGO_URI)
-db = client.watchersdb
-userlogs = db.userlogs
-quitlogs = db.quitlogs
-
-def format_kst(dt: datetime) -> str:
-    kst = pytz_timezone("Asia/Seoul")
-    return dt.astimezone(kst).strftime("%Y-%m-%dT%H-%M-%S")
+from db.connection import userlogs, quitlogs
+from utils.logging_utils import log_db
         
-async def move_user_to_quitlogs(user_id: str):
+async def move_user_to_quitlogs(user_id: str, log_id: str | None = None):
     # 1) userlogs에서 유저 정보 꺼내오기
     user_doc = await userlogs.find_one({"user_id": user_id})
     if not user_doc:
-        print(f"❗ {user_id}의 정보를 userlogs에서 찾을 수 없음")
+        log_db("Error", f"User not found in userlogs: {user_id}", log_id=log_id)
         return
 
     # 2) 불필요한 필드 삭제 (_id, user_id, 그리고 혹시 남아있을 times)
@@ -30,7 +16,7 @@ async def move_user_to_quitlogs(user_id: str):
     user_doc.pop("times", None)
 
     # 3) 퇴장 시각만 별도로 계산
-    quit_time = format_kst(datetime.now(timezone.utc))
+    quit_time = datetime.now(timezone.utc).isoformat()
 
     # 4) quitlogs에 upsert: 필드는 $set으로, 횟수 증가는 $inc로
     await quitlogs.update_one(
@@ -45,4 +31,4 @@ async def move_user_to_quitlogs(user_id: str):
     # 5) userlogs에서 원본 문서 삭제
     await userlogs.delete_one({"user_id": user_id})
 
-    print(f"✅ {user_id}의 정보를 quitlogs로 이동 및 퇴장 시간 기록 완료 (times +1)")
+    log_db("DB", f"Moved user to quitlogs with quit_time recorded (times +1): {user_id}", log_id=log_id)

@@ -16,3 +16,11 @@ def is_master_or_organizer_appcmd():
         user_roles = {role.name for role in getattr(interaction.user, "roles", [])}
         return bool(allowed_roles & user_roles) or interaction.user.guild_permissions.administrator
     return app_commands.check(predicate)
+
+# Member 이상 사용 가능 (Master/Organizer 포함)
+def is_member_or_above_appcmd():
+    async def predicate(interaction):
+        allowed_roles = {"Master", "Organizer", "Member"}
+        user_roles = {role.name for role in getattr(interaction.user, "roles", [])}
+        return bool(allowed_roles & user_roles) or interaction.user.guild_permissions.administrator
+    return app_commands.check(predicate)

@@ -1,0 +1,7 @@
+motor
+discord.py>=2.2
+python-dotenv
+apscheduler
+pytz
+python-dateutil
+requests

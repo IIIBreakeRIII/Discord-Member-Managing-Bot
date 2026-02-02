@@ -2,6 +2,7 @@ from discord.ext import commands
 from discord import app_commands, Interaction, User
 from db.mongo import get_total_voice_duration
 import discord
+from utils.logging_utils import log_bot
 
 def format_duration(seconds: int) -> str:
     units = [
@@ -30,7 +31,8 @@ class VoiceDurationTracker(commands.Cog):
     async def stay_duration(self, interaction: Interaction, user: User):
         await interaction.response.defer(thinking=True)
 
-        total_seconds = await get_total_voice_duration(str(user.id))
+        log_id = log_bot("DB Reading", f"get total voice duration: {user.display_name}")
+        total_seconds = await get_total_voice_duration(str(user.id), log_id=log_id)
         formatted = format_duration(total_seconds or 0)
 
         embed = discord.Embed(
@@ -42,4 +44,4 @@ class VoiceDurationTracker(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(VoiceDurationTracker(bot))
-    print("🕒 VoiceDurationTracker Cog loaded")
+    log_bot("Load Complete", "VoiceDurationTracker Cog loaded")

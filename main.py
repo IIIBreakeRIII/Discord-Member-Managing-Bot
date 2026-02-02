@@ -5,6 +5,7 @@ import discord
 
 from discord.ext import commands
 from dotenv import load_dotenv
+from utils.logging_utils import log_bot
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -17,12 +18,12 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"✅ Logged in as {bot.user} ({bot.user.id})")
+    log_bot("Load Complete", f"Logged in as {bot.user} ({bot.user.id})")
     try:
         synced = await bot.tree.sync()
-        print(f"✅ Synced {len(synced)} slash command(s).")
+        log_bot("Load Complete", f"Synced {len(synced)} slash command(s).")
     except Exception as e:
-        print("❌ Slash command sync failed:", e)
+        log_bot("Error", f"Slash command sync failed: {e}")
 
 async def main():
     # Cog 비동기 로드
@@ -31,7 +32,10 @@ async def main():
     await bot.load_extension("cogs.server_join_time")
     await bot.load_extension("cogs.user_profile_tracker")
     await bot.load_extension("cogs.voice_duration_tracker")
+    await bot.load_extension("cogs.voice_leaderboard")
+    await bot.load_extension("cogs.overwatch_rates")
     await bot.load_extension("cogs.server_synchronization")
+    await bot.load_extension("cogs.error_notifier")
     
     # Prod v2.0
     # 퇴장 시간 기록 추적

@@ -1,42 +1,25 @@
-from motor.motor_asyncio import AsyncIOMotorClient
-from dotenv import load_dotenv
 from datetime import datetime, timezone
-from pytz import timezone as pytz_timezone 
 
-import os
-# import asyncio
-
-load_dotenv()
-MONGO_URI = os.getenv("MONGODB_URI")
-
-client = AsyncIOMotorClient(MONGO_URI)
-
-db = client.watchersdb
-collection = db.userlogs
-
-# Formatting timezone to KR(Seoul) -> To Database
-def format_kst(dt: datetime) -> str:
-    kst = pytz_timezone("Asia/Seoul")
-    return dt.astimezone(kst).strftime("%Y-%m-%dT%H-%M-%S")
-
-# Formatting timezone to KR(Seoul) -> To User
-def format_korean_datetime_string(dt_str: str) -> str:
-    """
-    'YYYY-MM-DDTHH-MM-SS' 형식 문자열을 'YYYY년 MM월 DD일 HH시MM분 SS초'로 변환
-    """
-    dt = datetime.strptime(dt_str, "%Y-%m-%dT%H-%M-%S")
-    return f"{dt.year}년 {dt.month:02d}월 {dt.day:02d}일 {dt.hour:02d}시 {dt.minute:02d}분 {dt.second:02d}초"
+from db.connection import userlogs as collection
+from utils.logging_utils import log_db
 
 # Update User Voice Log In DB
-async def update_user_voice_log(user_id: str, username:str = None, join_time: datetime = None, leave_time: datetime = None, channel: str = None):
+async def update_user_voice_log(
+    user_id: str,
+    username: str = None,
+    join_time: datetime = None,
+    leave_time: datetime = None,
+    channel: str = None,
+    log_id: str | None = None,
+):
     update_fields = {}
 
     if join_time:
-        update_fields["join_time"] = format_kst(join_time)
-        update_fields["last_active"] = format_kst(join_time)
+        update_fields["join_time"] = join_time.astimezone(timezone.utc).isoformat()
+        update_fields["last_active"] = join_time.astimezone(timezone.utc).isoformat()
 
     if leave_time:
-        update_fields["leave_time"] = format_kst(leave_time)
+        update_fields["leave_time"] = leave_time.astimezone(timezone.utc).isoformat()
 
     if channel:
         update_fields["channel"] = channel
@@ -45,10 +28,10 @@ async def update_user_voice_log(user_id: str, username:str = None, join_time: da
         update_fields["username"] = username
 
     if not update_fields:
-        print("❗ update_user_voice_log: update_fields 비어있음 — DB 쓰기 안 함")
+        log_db("DB", "update_user_voice_log: update_fields empty — skip write", log_id=log_id)
         return
 
-    print("📤 MongoDB 쓰기 시도 중:", update_fields)
+    log_db("DB Writing", f"update_user_voice_log: {update_fields}", log_id=log_id)
 
     try:
         result = await collection.update_one(
@@ -56,28 +39,28 @@ async def update_user_voice_log(user_id: str, username:str = None, join_time: da
             {"$set": update_fields},
             upsert=True
         )
-        print("✅ MongoDB 쓰기 결과:", result.raw_result)
+        log_db("DB", f"MongoDB write result: {result.raw_result}", log_id=log_id)
     except Exception as e:
-        print("❌ MongoDB 쓰기 실패:", e)
+        log_db("Error", f"MongoDB write failed: {e}", log_id=log_id)
 
 # Get Last Active Time -> To User
-async def get_last_active_by_user_id(user_id: str) -> str | None:
+async def get_last_active_by_user_id(user_id: str, log_id: str | None = None) -> str | None:
     doc = await collection.find_one({"user_id": user_id})
-    print(doc)
+    log_db("DB", f"User doc: {doc}", log_id=log_id)
     if doc and "last_active" in doc:
         return doc["last_active"]
     return None
 
 # Save Role in DB
-async def save_granted_role(user_id: str, username: str, role_name: str):
+async def save_granted_role(user_id: str, username: str, role_name: str, log_id: str | None = None):
     doc = {
         "user_id": user_id,
         "username": username,
         "granted_role": role_name,
-        "granted_time": format_kst(datetime.now(timezone.utc)),
+        "granted_time": datetime.now(timezone.utc).isoformat(),
     }
 
-    print(f"📥 권한 부여 기록 저장 중: {doc}")
+    log_db("DB Writing", f"Saving granted role: {doc}", log_id=log_id)
     
     try:
         await collection.update_one(
@@ -86,13 +69,13 @@ async def save_granted_role(user_id: str, username: str, role_name: str):
             upsert=True
         )
     except Exception as e:
-        print("❌ MongoDB 저장 실패:", e)
+        log_db("Error", f"MongoDB save failed: {e}", log_id=log_id)
 
 # Save User's Server Enter Time in DB
-async def save_join_time(user_id: str, username: str):
-    doc = { "user_id": user_id, "username": username , "joined_at_server": format_kst(datetime.now(timezone.utc)), }
+async def save_join_time(user_id: str, username: str, log_id: str | None = None):
+    doc = { "user_id": user_id, "username": username , "joined_at_server": datetime.now(timezone.utc).isoformat(), }
     
-    print(f"📥 서버 입장 기록 저장 중: {doc}")
+    log_db("DB Writing", f"Saving join time: {doc}", log_id=log_id)
 
     try:
         await collection.update_one(
@@ -101,19 +84,20 @@ async def save_join_time(user_id: str, username: str):
             upsert=True
         )
     except Exception as e:
-        print("❌ MongoDB 서버 입장 저장 실패:", e)
+        log_db("Error", f"MongoDB save failed (join time): {e}", log_id=log_id)
 
 # User Voice Duration Time
-async def get_total_voice_duration(user_id: str) -> int:
+async def get_total_voice_duration(user_id: str, log_id: str | None = None) -> int:
     """
     MongoDB에서 해당 유저의 전체 접속 시간 누적을 초 단위로 반환
     """
     doc = await collection.find_one({"user_id": user_id})
+    log_db("DB", f"Voice duration doc: {doc}", log_id=log_id)
     if doc and "durations" in doc:
         return int(doc["durations"].get("total_seconds", 0))
     return 0
 
-async def add_voice_duration(user_id: str, username: str, duration_seconds: int):
+async def add_voice_duration(user_id: str, username: str, duration_seconds: int, log_id: str | None = None):
     try:
         await collection.update_one(
             {"user_id": user_id},
@@ -123,12 +107,12 @@ async def add_voice_duration(user_id: str, username: str, duration_seconds: int)
             },
             upsert=True
         )
-        print(f"📈 {username} - {duration_seconds}초 누적 완료")
+        log_db("DB", f"Voice duration updated: {username} +{duration_seconds}s", log_id=log_id)
     except Exception as e:
-        print(f"❌ 음성 체류 시간 누적 실패: {e}")
+        log_db("Error", f"Voice duration update failed: {e}", log_id=log_id)
 
 # Server Synchronization to DB
-async def upsert_member_info(data: dict):
+async def upsert_member_info(data: dict, log_id: str | None = None):
     """
     유저 정보를 user_id 기준으로 최신화하거나 새로 삽입
     """
@@ -143,13 +127,15 @@ async def upsert_member_info(data: dict):
             }},
             upsert=True
         )
-        print(f"🗂️  유저 정보 동기화됨: {data['username'], data['server_nickname']}")
+        log_db("DB", f"User info synced: {data['username'], data['server_nickname']}", log_id=log_id)
     except Exception as e:
-        print(f"❌ 유저 정보 동기화 실패: {e}")
+        log_db("Error", f"User info sync failed: {e}", log_id=log_id)
 
 # Get User Information From DB
-async def get_user_profile(user_id: str):
-    return await collection.find_one({"user_id": user_id})
+async def get_user_profile(user_id: str, log_id: str | None = None):
+    doc = await collection.find_one({"user_id": user_id})
+    log_db("DB", f"User profile doc: {doc}", log_id=log_id)
+    return doc
 
 # MongoDB 접속 테스트 함수
 # async def test_mongo_connection():

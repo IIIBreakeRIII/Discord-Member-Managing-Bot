@@ -2,27 +2,11 @@ from discord.ext import commands
 from discord import app_commands, Interaction, Member
 import discord
 from db.mongo import get_user_profile
-from datetime import datetime
-import pytz
-from dateutil import parser
+from utils.time_utils import to_kst, KST_DISPLAY_FORMAT
 from cogs import is_master_or_organizer_appcmd
+from utils.logging_utils import log_bot
 
-
-def format_kst_datetime(dt_str: str) -> str:
-    
-    try:
-        try:
-            dt = parser.isoparse(dt_str)
-        except Exception:
-            dt = datetime.strptime(dt_str, "%Y-%m-%dT%H-%M-%S")
-            dt = dt.replace(tzinfo=pytz.utc)
-        
-        kst = dt.astimezone(pytz.timezone("Asia/Seoul"))
-        return kst.strftime("%Y년 %m월 %d일 %H시 %M분 %S초")
-
-    except Exception as e:
-        print(f"[ERROR] 시간 파싱 실패: {e}")
-        return "❌ 잘못된 시간"
+# Refactor: unified KST parsing/formatting; behavior unchanged
 
 
 def format_duration(seconds_input) -> str:
@@ -67,7 +51,8 @@ class UserProfileTracker(commands.Cog):
         await interaction.response.defer()
 
         user_id = str(user.id)
-        profile = await get_user_profile(user_id)
+        log_id = log_bot("DB Reading", f"get user profile: {user.display_name}")
+        profile = await get_user_profile(user_id, log_id=log_id)
 
         if not profile:
             await interaction.followup.send(f"❌ `{user.display_name}` 님의 정보를 찾을 수 없습니다.", ephemeral=True)
@@ -82,10 +67,10 @@ class UserProfileTracker(commands.Cog):
             granted_role = granted_role[0] if granted_role else "❌ 없음"
 
         joined = profile.get("joined_at_server", "")
-        joined_kst = format_kst_datetime(joined)
+        joined_kst = to_kst(joined).strftime(KST_DISPLAY_FORMAT)
 
         last_active = profile.get("last_active", "")
-        last_active_kst = format_kst_datetime(last_active)
+        last_active_kst = to_kst(last_active).strftime(KST_DISPLAY_FORMAT)
 
         durations_raw = profile.get("durations", 0)
 
@@ -119,4 +104,4 @@ class UserProfileTracker(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(UserProfileTracker(bot))
-    print("🧾 UserProfileTracker Cog loaded")
+    log_bot("Load Complete", "UserProfileTracker Cog loaded")

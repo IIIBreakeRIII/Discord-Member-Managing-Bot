@@ -4,6 +4,8 @@ import discord
 from db.mongo import upsert_member_info
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from cogs import is_master_or_organizer_appcmd
+from settings import ALERT_CHANNEL_ID, ROLE_MASTER_MENTION, ROLE_ORGANIZER_MENTION
+from utils.logging_utils import log_bot
 
 class ServerSynchronization(commands.Cog):
     def __init__(self, bot):
@@ -22,13 +24,11 @@ class ServerSynchronization(commands.Cog):
         for guild in self.bot.guilds:
             updated = await self._sync_members(guild)
             # 동기화 후 메시지 전송
-            channel = guild.get_channel(1111111111111111111)
+            channel = guild.get_channel(ALERT_CHANNEL_ID)
             if channel:
-                role_mention_master = "<@&1111111111111111111>"
-                role_mention_organizer = "<@&1111111111111111111>"
                 embed = discord.Embed(
                     title="🔁 서버 멤버 주간 동기화 완료",
-                    description=f"{role_mention_master} {role_mention_organizer}\n✅ 총 `{updated}`명의 멤버 정보를 동기화했습니다.",
+                    description=f"{ROLE_MASTER_MENTION} {ROLE_ORGANIZER_MENTION}\n✅ 총 `{updated}`명의 멤버 정보를 동기화했습니다.",
                     color=discord.Color.teal()
                 )
                 await channel.send(embed=embed)
@@ -52,7 +52,8 @@ class ServerSynchronization(commands.Cog):
                 "granted_role": [r.name for r in member.roles if not r.is_default()],
             }
 
-            await upsert_member_info(data)
+            log_id = log_bot("DB Writing", f"sync member info: {member.name}")
+            await upsert_member_info(data, log_id=log_id)
             updated += 1
 
         if interaction:
@@ -67,4 +68,4 @@ class ServerSynchronization(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(ServerSynchronization(bot))
-    print("🔁 ServerSynchronization Cog loaded")
+    log_bot("Load Complete", "ServerSynchronization Cog loaded")

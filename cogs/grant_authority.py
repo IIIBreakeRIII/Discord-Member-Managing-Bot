@@ -2,29 +2,9 @@ from discord.ext import commands
 from discord import RawReactionActionEvent, Member, Interaction, app_commands
 from db.mongo import save_granted_role
 from cogs import is_master_or_organizer_appcmd
+from settings import load_config, update_config, MEMBER_ROLE_NAME, GUEST_ROLE_NAME
 import discord
-import json
-import os
-
-CONFIG_FILE = "config.json"
-
-MEMBER_ROLE_NAME = os.getenv("MEMBER_ROLE_NAME")
-GUEST_ROLE_NAME = os.getenv("GUEST_ROLE_NAME")
-
-
-def load_config():
-    try:
-        with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return {}
-
-
-def update_config(key: str, value: str):
-    config = load_config()
-    config[key] = value
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=4)
+from utils.logging_utils import log_bot
 
 
 class GrantAuthority(commands.Cog):
@@ -33,9 +13,9 @@ class GrantAuthority(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: RawReactionActionEvent):
-        print(f"[DEBUG] ✅ reaction detected — message_id: {payload.message_id}, emoji: {payload.emoji.name}")
+        log_bot("GrantAuthority", f"Reaction detected — message_id: {payload.message_id}, emoji: {payload.emoji.name}")
         if payload.emoji.name != "✅":
-            print("❌ 이모지가 ✅ 아님 — 무시")
+            log_bot("GrantAuthority", "Emoji is not target — ignored")
             return
 
         guild = self.bot.get_guild(payload.guild_id)
@@ -47,12 +27,13 @@ class GrantAuthority(commands.Cog):
             return
 
         # 메시지 ID 로드
+        # Refactor: config load centralized; behavior unchanged
         config = load_config()
         try:
             member_msg_id = int(config.get("MEMBER_NOTICE_MESSAGE_ID", 0))
             guest_msg_id = int(config.get("GUEST_NOTICE_MESSAGE_ID", 0))
         except ValueError:
-            print("❌ config.json 메시지 ID가 숫자가 아님")
+            log_bot("Error", "config.json message ID is not numeric")
             return
 
         # 메시지 ID에 따라 역할 결정
@@ -71,7 +52,7 @@ class GrantAuthority(commands.Cog):
         if role:
             try:
                 await member.add_roles(role)
-                print(f"[DEBUG] ✅ 역할 '{role_name}' 부여 완료")
+                log_bot("GrantAuthority", f"Role '{role_name}' granted")
 
                 embed = discord.Embed(
                     title="💛Watchers💛 합류하신 것을 축하드려요!",
@@ -80,19 +61,20 @@ class GrantAuthority(commands.Cog):
                 )
                 try:
                     await member.send(embed=embed)
-                    print("[DEBUG] 📩 DM 전송 성공")
+                    log_bot("GrantAuthority", "DM sent")
                 except discord.Forbidden:
-                    print("[DEBUG] 📪 DM 전송 실패 (사용자 설정 또는 차단)")
+                    log_bot("GrantAuthority", "DM failed (user settings or blocked)")
 
-                await save_granted_role(str(member.id), member.name, role_name)
-                print("[DEBUG] 📝 DB 저장 완료")
+                log_id = log_bot("DB Writing", f"save granted role: {member.name}")
+                await save_granted_role(str(member.id), member.name, role_name, log_id=log_id)
+                log_bot("GrantAuthority", "DB saved")
 
             except discord.Forbidden:
-                print(f"[ERROR] ❌ 봇 권한 부족으로 역할 부여 실패: '{role_name}'")
+                log_bot("Error", f"Missing permissions to grant role: '{role_name}'")
             except Exception as e:
-                print(f"[ERROR] ❌ 예기치 않은 오류 발생: {e}")
+                log_bot("Error", f"Unexpected error: {e}")
         else:
-            print(f"❌ 역할 '{role_name}' 을(를) 찾을 수 없습니다.")
+            log_bot("Error", f"Role not found: '{role_name}'")
 
     @app_commands.command(name="멤버-공지메시지id-설정", description="멤버 공지 메시지 ID를 설정합니다.")
     @is_master_or_organizer_appcmd()
@@ -118,4 +100,4 @@ class GrantAuthority(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(GrantAuthority(bot))
-    print("🔐 GrantAuthority Cog loaded")
+    log_bot("Load Complete", "GrantAuthority Cog loaded")
